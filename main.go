@@ -74,6 +74,7 @@ const xpcEnd = `
 	}
 	jm := protojson.MarshalOptions{
 		UseProtoNames: true, // so assign key is same as proto field
+		UseEnumNumbers: true, // so vanilla json unmarshal also works
 	}
 	return jm.Marshal(resp)
 	}
