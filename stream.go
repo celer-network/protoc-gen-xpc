@@ -2,6 +2,12 @@ package main
 
 import "html/template"
 
+// for stream template
+type oneRpc struct {
+	URL, Name, In, Out string
+	CS, SS             bool // client stream, server stream
+}
+
 var streamSendTpl = template.Must(template.New("send").Parse(`
 func StreamSend(con grpc.ClientConnInterface, url string, in []byte) error {
 	var req proto.Message

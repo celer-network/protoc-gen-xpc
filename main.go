@@ -53,9 +53,6 @@ func mygen(p *protogen.Plugin) error {
 		}
 	}
 	xpc.P(xpcEnd)
-	if len(streamingRpcs) == 0 {
-		return nil
-	}
 	// support streaming rpcs
 	var b bytes.Buffer
 	streamSendTpl.Execute(&b, streamingRpcs)
@@ -65,12 +62,6 @@ func mygen(p *protogen.Plugin) error {
 	xpc.P(b.String())
 	xpc.P(streamUtil)
 	return nil
-}
-
-// for stream template
-type oneRpc struct {
-	URL, Name, In, Out string
-	CS, SS             bool // client stream, server stream
 }
 
 const xpcHdr = `// Copyright 2020 Celer Network
