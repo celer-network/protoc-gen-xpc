@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
 	"path"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -24,12 +26,26 @@ func mygen(p *protogen.Plugin) error {
 	xpc := p.NewGeneratedFile(path.Join(*fpkg, *fn), protogen.GoImportPath(*fpkg))
 	xpc.P("package ", path.Base(*fpkg))
 	xpc.P(xpcHdr)
+	var streamingRpcs []*oneRpc
 	for _, f := range p.Files {
 		if f.Generate {
 			for _, svc := range f.Services {
-				svcIdt := f.GoImportPath.Ident(svc.GoName)
+				svcName := svc.Desc.FullName()
 				for _, rpc := range svc.Methods {
-					xpc.P(`case "/`, svcIdt, "/", rpc.GoName, `":`)
+					url := fmt.Sprintf("/%s/%s", svcName, rpc.Desc.Name())
+
+					if rpc.Desc.IsStreamingClient() || rpc.Desc.IsStreamingServer() {
+						streamingRpcs = append(streamingRpcs, &oneRpc{
+							URL:  url,
+							Name: string(rpc.Desc.Name()),
+							In:   xpc.QualifiedGoIdent(rpc.Input.GoIdent),
+							Out:  xpc.QualifiedGoIdent(rpc.Output.GoIdent),
+							CS:   rpc.Desc.IsStreamingClient(),
+							SS:   rpc.Desc.IsStreamingServer(),
+						})
+						continue
+					}
+					xpc.P(`case "`, url, `":`)
 					xpc.P(`req = new(`, rpc.Input.GoIdent, ")")
 					xpc.P(`resp = new(`, rpc.Output.GoIdent, ")")
 				}
@@ -37,7 +53,24 @@ func mygen(p *protogen.Plugin) error {
 		}
 	}
 	xpc.P(xpcEnd)
+	if len(streamingRpcs) == 0 {
+		return nil
+	}
+	// support streaming rpcs
+	var b bytes.Buffer
+	streamSendTpl.Execute(&b, streamingRpcs)
+	xpc.P(b.String())
+	b.Reset()
+	streamRecvTpl.Execute(&b, streamingRpcs)
+	xpc.P(b.String())
+	xpc.P(streamUtil)
 	return nil
+}
+
+// for stream template
+type oneRpc struct {
+	URL, Name, In, Out string
+	CS, SS             bool // client stream, server stream
 }
 
 const xpcHdr = `// Copyright 2020 Celer Network
@@ -52,7 +85,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func SendGrpc(con grpc.ClientConnInterface, ctx context.Context, url string, in []byte) ([]byte, error) {
+var jm = protojson.MarshalOptions{
+	UseProtoNames: true, // so assign key is same as proto field
+	UseEnumNumbers: true, // so vanilla json unmarshal also works
+}
+
+func DoUnary(con grpc.ClientConnInterface, ctx context.Context, url string, in []byte) ([]byte, error) {
 	var req, resp proto.Message
 	switch url {
 `
@@ -72,10 +110,6 @@ const xpcEnd = `
 	if err != nil {
 		return nil, err
 	}
-	jm := protojson.MarshalOptions{
-		UseProtoNames: true, // so assign key is same as proto field
-		UseEnumNumbers: true, // so vanilla json unmarshal also works
-	}
 	return jm.Marshal(resp)
-	}
+}
 `
