@@ -21,7 +21,7 @@ func StreamSend(con grpc.ClientConnInterface, url string, in []byte) error {
 		{{if .SS}}desc.ClientStreams = {{.CS}}{{end}}
 	{{end}}
 	default:
-		return errors.New(url + " not suppoted")
+		return nil, errors.New(url + " not suppoted")
 	}
 	var err error
 	if len(in) > 0 {
@@ -46,9 +46,12 @@ func StreamRecv(url string) ([]byte, error) {
 	}
 	s, ok := sMgr.Get(url)
 	if !ok {
-		return nil, errros.New(url + "try to recv but no stream")
+		return nil, errors.New(url + "try to recv but no stream")
 	}
 	err := s.RecvMsg(recv)
+	if err == io.EOF {
+		s.eof = true
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -70,21 +73,24 @@ type streamManager struct {
 	m map[string]*oneStream
 	sync.Mutex
 }
-func (s *streamManager) Get(url string) (grpc.ClientStream, bool) {
-	m.Lock()
-	defer m.Unlock()
-	s, ok := s.m[url]
-	if s.eof {
+func (sm *streamManager) Get(url string) (grpc.ClientStream, bool) {
+	sm.Lock()
+	defer sm.Unlock()
+	cs, ok := sm.m[url]
+    if cs == nil {
+		return cs, false
+	}
+	if cs.eof {
 		return nil, false
 	}
-	return s, ok
+	return cs, ok
 }
-func (s *streamManager) Add(con grpc.ClientConnInterface, url string, desc *grpc.StreamDesc) grpc.ClientStream {
-	s, _ := con.NewStream(context.Background(), desc, url)
-	m.Lock()
-	defer m.Unlock()
-	s.m[url] = &oneStream{s, false}
-	return s
+func (sm *streamManager) Add(con grpc.ClientConnInterface, url string, desc *grpc.StreamDesc) grpc.ClientStream {
+	cs, _ := con.NewStream(context.Background(), desc, url)
+	sm.Lock()
+	defer sm.Unlock()
+	sm.m[url] = &oneStream{cs, false}
+	return cs
 }
 
 func getStream(con grpc.ClientConnInterface, url string, desc *grpc.StreamDesc) grpc.ClientStream {

@@ -70,6 +70,7 @@ const xpcHdr = `// Copyright 2020 Celer Network
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
