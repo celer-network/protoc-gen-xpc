@@ -9,7 +9,7 @@ type oneRpc struct {
 }
 
 var streamSendTpl = template.Must(template.New("send").Parse(`
-func StreamSend(con grpc.ClientConnInterface, url string, in []byte) error {
+func StreamSend(con grpc.ClientConnInterface, ctx context.Context, url string, in []byte) error {
 	var req proto.Message
 	desc := new(grpc.StreamDesc)
 	switch url {
@@ -30,7 +30,11 @@ func StreamSend(con grpc.ClientConnInterface, url string, in []byte) error {
 			return err
 		}
 	}
-	return getStream(con, url, desc).SendMsg(req)
+	s, ok := sMgr.Get(url)
+	if ok {
+		return s.SendMsg(req)
+	}
+	return sMgr.Add(con, ctx, url, desc).SendMsg(req)
 }`))
 
 var streamRecvTpl = template.Must(template.New("recv").Parse(`
@@ -85,20 +89,12 @@ func (sm *streamManager) Get(url string) (*oneStream, bool) {
 	}
 	return cs, ok
 }
-func (sm *streamManager) Add(con grpc.ClientConnInterface, url string, desc *grpc.StreamDesc) *oneStream {
-	cs, _ := con.NewStream(context.Background(), desc, url)
+func (sm *streamManager) Add(con grpc.ClientConnInterface, ctx context.Context, url string, desc *grpc.StreamDesc) *oneStream {
+	cs, _ := con.NewStream(ctx, desc, url)
 	sm.Lock()
 	defer sm.Unlock()
 	news := &oneStream{cs, false}
 	sm.m[url] = news
 	return news
-}
-
-func getStream(con grpc.ClientConnInterface, url string, desc *grpc.StreamDesc) *oneStream {
-	s, ok := sMgr.Get(url)
-	if ok {
-		return s
-	}
-	return sMgr.Add(con, url, desc)
 }
 `
