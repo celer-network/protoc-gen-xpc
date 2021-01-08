@@ -107,6 +107,7 @@ func (sm *streamManager) Close(url string) {
 	cs := sm.m[url]
 	if cs != nil {
 		cs.CloseSend()
+		cs.eof = true
 	}
 }
 `
