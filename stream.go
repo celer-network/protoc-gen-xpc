@@ -65,6 +65,10 @@ func StreamRecv(url string) ([]byte, error) {
 // common code for streaming rpcs
 // getStream will create or reuse
 const streamUtil = `
+func CloseStream(url string) {
+	sMgr.Close(url)
+}
+
 // below are stream utils/helper
 var sMgr = &streamManager{
 	m: make(map[string]*oneStream),
@@ -96,5 +100,13 @@ func (sm *streamManager) Add(con grpc.ClientConnInterface, ctx context.Context, 
 	news := &oneStream{cs, false}
 	sm.m[url] = news
 	return news
+}
+func (sm *streamManager) Close(url string) {
+	sm.Lock()
+	defer sm.Unlock()
+	cs := sm.m[url]
+	if cs != nil {
+		cs.CloseSend()
+	}
 }
 `
